@@ -12,6 +12,22 @@ The following environment variables might be used to customize behaviour:
 
 Adapted from [wind-js-server](https://github.com/danwild/wind-js-server).
 
+## Build Setup
+
+``` bash
+# install dependencies
+$ npm install
+
+# start
+$ npm start
+
+# build docker image
+$ docker build -t claustres/wind-server .
+
+# run container
+$ docker run --name windserver -d claustres/wind-server
+```
+
 ## License
 
 MIT License (MIT)

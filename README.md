@@ -25,7 +25,7 @@ $ npm start
 $ docker build -t claustres/wind-server .
 
 # run container
-$ docker run --name windserver -d claustres/wind-server
+$ docker run --name windserver -d -p 7000:7000 claustres/wind-server
 ```
 
 ## License

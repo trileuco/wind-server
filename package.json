@@ -14,6 +14,7 @@
   "author": "Luc Claustres",
   "license": "MIT",
   "dependencies": {
+    "compression": "^1.6.2",
     "cors": "^2.7.1",
     "express": "^4.13.4",
     "moment": "^2.12.0",

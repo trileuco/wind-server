@@ -1,4 +1,5 @@
 var express = require("express");
+var compression = require('compression');
 var moment = require("moment");
 var http = require('http');
 var request = require('request');
@@ -26,6 +27,7 @@ var corsOptions = {
 	}
 };
 
+app.use(compression());
 app.listen(port, function(err){
 	console.log('Running wind server for data resolution of ' + (resolution === '1' ? '1' : '0.5') + ' degree on port ' + port);
 });

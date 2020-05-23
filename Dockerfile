@@ -1,13 +1,17 @@
-FROM  node:7.4
+FROM node:14-buster
 
-RUN apt-get update
-RUN apt-get install -y default-jre
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends default-jre && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV JAVA_HOME /usr
 
 WORKDIR /opt/app
 
-COPY . /opt/app/
+# Download dependencies independent of application for faster build
+COPY package.json /opt/app/
 RUN npm install
 
-CMD [ "npm", "start" ]
+COPY . /opt/app/
 
+CMD ["npm", "start"]

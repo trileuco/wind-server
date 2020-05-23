@@ -33,7 +33,7 @@ app.listen(port, function(err){
 });
 
 app.get('/', cors(corsOptions), function(req, res){
-    res.send('Wind server : go to /latest for last wind data.');
+	res.send('Wind server : go to /latest for last wind data.');
 });
 
 app.get('/alive', cors(corsOptions), function(req, res){
@@ -147,11 +147,11 @@ function getGribData(targetMoment){
 
 	function runQuery(targetMoment){
 
-        // only go 2 weeks deep
+		// only go 2 weeks deep
 		if (moment.utc().diff(targetMoment, 'days') > 30){
-	        console.log('hit limit, harvest complete or there is a big gap in data..');
-            return;
-        }
+			console.log('hit limit, harvest complete or there is a big gap in data..');
+			return;
+		}
 
 		var stamp = moment(targetMoment).format('YYYYMMDD') + roundHours(moment(targetMoment).hour(), 6);
 		request.get({
@@ -275,16 +275,16 @@ function roundHours(hours, interval){
  * @returns {boolean}
  */
 function checkPath(path, mkdir) {
-    try {
-	    fs.statSync(path);
-	    return true;
+	try {
+		fs.statSync(path);
+		return true;
 
-    } catch(e) {
-        if(mkdir){
-	        fs.mkdirSync(path);
-        }
-	    return false;
-    }
+	} catch(e) {
+		if(mkdir){
+			fs.mkdirSync(path);
+		}
+		return false;
+	}
 }
 
 // init harvest

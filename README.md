@@ -28,6 +28,15 @@ $ docker build -t claustres/wind-server .
 $ docker run --name windserver -d -p 7000:7000 claustres/wind-server
 ```
 
+## Endpoints
+
+- **/latest** returns the most up to date JSON data available
+- **/nearest** returns JSON data nearest to requested
+    - $GET params:
+        - `timeIso` an ISO timestamp for temporal target
+        - `searchLimit` number of days to search beyond the timeIso (will search backwards, then forwards)
+- **/alive** health check url, returns simple message
+
 ## License
 
 MIT License (MIT)

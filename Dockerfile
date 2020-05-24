@@ -6,12 +6,17 @@ RUN apt-get update && \
 
 ENV JAVA_HOME /usr
 
-WORKDIR /opt/app
+WORKDIR /app
+RUN set -x && groupadd -r -g 888 app && \
+    useradd -r -u 888 -g app -d /app app && \
+    chown -R app:app /app
+USER app
 
 # Download dependencies independent of application for faster build
-COPY package.json /opt/app/
+COPY package.json /app/
 RUN npm install
 
-COPY . /opt/app/
+# Copy application
+COPY . .
 
 CMD ["npm", "start"]

@@ -1,17 +1,18 @@
 {
   "name": "wind-server",
   "version": "0.0.1",
-  "description": "REST service to expose Grib2 wind forecast data as pre-formatted JSON",
+  "description": "REST service to expose GRIB2 GFS wind forecast data as pre-formatted JSON",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "keywords": [
-    "wind",
+    "gfs",
+    "grib2",
     "node",
-    "grib2"
+    "wind"
   ],
-  "author": "Luc Claustres",
+  "author": "Florian Mauracher",
   "license": "MIT",
   "dependencies": {
     "compression": "^1.7.4",

@@ -11,6 +11,8 @@ var app = express();
 var grib2json = process.env.GRIB2JSON || './converter/bin/grib2json';
 var port = process.env.PORT || 7000;
 var resolution = process.env.RESOLUTION || '0.5';
+var wind = process.env.WIND || true;
+var temp = process.env.TEMP || false;
 var baseDir ='http://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_' + (resolution === '1' ? '1p00' : '0p50') + '.pl';
 
 // cors config
@@ -160,11 +162,15 @@ function getGribData(targetMoment){
 			url: baseDir,
 			qs: {
 				file: 'gfs.t' + hour + (resolution === '1' ? 'z.pgrb2.1p00.f000' : 'z.pgrb2full.0p50.f000'),
-				lev_10_m_above_ground: 'on',
-				lev_surface: 'on',
-				var_TMP: 'on',
-				var_UGRD: 'on',
-				var_VGRD: 'on',
+				...temp && {
+					lev_surface: 'on',
+					var_TMP: 'on',
+				},
+				...wind && {
+					lev_10_m_above_ground: 'on',
+					var_UGRD: 'on',
+					var_VGRD: 'on',
+				},
 				leftlon: 0,
 				rightlon: 360,
 				toplat: 90,

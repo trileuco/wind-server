@@ -13,7 +13,7 @@ var port = process.env.PORT || 7000;
 var resolution = process.env.RESOLUTION || '0.5';
 var wind = process.env.WIND || true;
 var temp = process.env.TEMP || false;
-var baseDir ='http://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_' + (resolution === '1' ? '1p00' : '0p50') + '.pl';
+var baseDir ='https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_' + (resolution === '1' ? '1p00' : '0p50') + '.pl';
 
 // cors config
 var whitelist = [
@@ -149,8 +149,7 @@ function getGribData(targetMoment){
 
 	function runQuery(targetMoment){
 
-		// only go 2 weeks deep
-		if (moment.utc().diff(targetMoment, 'days') > 30){
+		if (moment.utc().diff(targetMoment, 'days') > 10){
 			console.log('hit limit, harvest complete or there is a big gap in data..');
 			return;
 		}

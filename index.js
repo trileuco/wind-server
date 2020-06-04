@@ -2,9 +2,8 @@ var express = require("express");
 var compression = require('compression');
 var moment = require("moment");
 var http = require('http');
-var request = require('request');
+var fetch = require('node-fetch');
 var fs = require('fs');
-var Q = require('q');
 var cors = require('cors');
 
 var app = express();
@@ -129,95 +128,73 @@ setInterval(function(){
  * @param targetMoment {Object} moment to check for new data
  */
 function run(targetMoment){
-
-	getGribData(targetMoment).then(function(response){
-		if(response.stamp){
-			convertGribToJson(response.stamp, response.targetMoment);
-		}
-	});
+	getGribData(targetMoment)
 }
 
 /**
  *
- * Finds and returns the latest 6 hourly GRIB2 data from NOAAA
+ * Finds and downloads the latest 6 hourly GRIB2 data from NOAAA
  *
- * @returns {*|promise}
  */
 function getGribData(targetMoment){
-
-	var deferred = Q.defer();
-
-	function runQuery(targetMoment){
-
-		if (moment.utc().diff(targetMoment, 'days') > 10){
-			console.log('hit limit, harvest complete or there is a big gap in data..');
-			return;
-		}
-
-		var date = moment(targetMoment).format('YYYYMMDD');
-		var hour = roundHours(moment(targetMoment).hour(), 6);
-		var stamp = date + hour;
-		request.get({
-			url: baseDir,
-			qs: {
-				file: 'gfs.t' + hour + (resolution === '1' ? 'z.pgrb2.1p00.f000' : 'z.pgrb2full.0p50.f000'),
-				...temp && {
-					lev_surface: 'on',
-					var_TMP: 'on',
-				},
-				...wind && {
-					lev_10_m_above_ground: 'on',
-					var_UGRD: 'on',
-					var_VGRD: 'on',
-				},
-				leftlon: 0,
-				rightlon: 360,
-				toplat: 90,
-				bottomlat: -90,
-				dir: '/gfs.'+ date + '/' + hour
-			}
-
-		}).on('error', function(err){
-			// console.log(err);
-			runQuery(moment(targetMoment).subtract(6, 'hours'));
-
-		}).on('response', function(response) {
-
-			console.log('response '+response.statusCode + ' | '+stamp);
-
-			if(response.statusCode != 200){
-				runQuery(moment(targetMoment).subtract(6, 'hours'));
-			}
-
-			else {
-				// don't rewrite stamps
-				if(!checkPath('json-data/'+ stamp +'.json', false)) {
-
-					console.log('piping ' + stamp);
-
-					// mk sure we've got somewhere to put output
-					checkPath('grib-data', true);
-
-					// pipe the file, resolve the valid time stamp
-					var file = fs.createWriteStream("grib-data/"+stamp+".f000");
-					response.pipe(file);
-					file.on('finish', function() {
-						file.close();
-						deferred.resolve({stamp: stamp, targetMoment: targetMoment});
-					});
-
-				}
-				else {
-					console.log('already have '+ stamp +', not looking further');
-					deferred.resolve({stamp: false, targetMoment: false});
-				}
-			}
-		});
-
+	if (moment.utc().diff(targetMoment, 'days') > 10){
+		console.log('hit limit, harvest complete or there is a big gap in data..');
+		return;
 	}
 
-	runQuery(targetMoment);
-	return deferred.promise;
+	var date = moment(targetMoment).format('YYYYMMDD');
+	var hour = roundHours(moment(targetMoment).hour(), 6);
+	var stamp = date + hour;
+
+	const url = new URL(`${baseDir}`);
+	const params = {
+		file: 'gfs.t' + hour + (resolution === '1' ? 'z.pgrb2.1p00.f000' : 'z.pgrb2full.0p50.f000'),
+		...temp && {
+			lev_surface: 'on',
+			var_TMP: 'on',
+		},
+		...wind && {
+			lev_10_m_above_ground: 'on',
+			var_UGRD: 'on',
+			var_VGRD: 'on',
+		},
+		leftlon: 0,
+		rightlon: 360,
+		toplat: 90,
+		bottomlat: -90,
+		dir: '/gfs.'+ date + '/' + hour,
+	}
+	Object.entries(params).forEach(([key, val]) => url.searchParams.append(key, val));
+
+	fetch(url)
+		.then(response => {
+			console.log(`RESP ${response.status} ${stamp}`);
+
+			if (response.status != 200) {
+				getGribData(moment(targetMoment).subtract(6, 'hours'));
+				return;
+			}
+
+			if (!checkPath(`json-data/${stamp}.json`, false)) {
+				console.log("Write output");
+				// Make sure output directory exists
+				checkPath('grib-data', true);
+
+				var file = fs.createWriteStream(`grib-data/${stamp}.f000`);
+				response.body.pipe(file);
+				file.on("finish", () => {
+					file.close();
+					convertGribToJson(stamp, targetMoment);
+				});
+			} else {
+				console.log(`Already have ${stamp}, not looking further`);
+			}
+		})
+		.catch(err => {
+			console.log("ERR", stamp, err)
+
+			getGribData(moment(targetMoment).subtract(6, 'hours'));
+		})
 }
 
 function convertGribToJson(stamp, targetMoment){

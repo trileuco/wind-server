@@ -4,7 +4,9 @@
   "description": "REST service to expose GRIB2 GFS wind forecast data as pre-formatted JSON",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "lint": "eslint index.js",
+    "lint:fix": "eslint --fix index.js"
   },
   "repository": {
     "type": "git",
@@ -24,5 +26,10 @@
     "express": "^4.17.1",
     "moment": "^2.26.0",
     "node-fetch": "^2.6.0"
+  },
+  "devDependencies": {
+    "eslint": "^6.8.0",
+    "eslint-config-airbnb-base": "^14.1.0",
+    "eslint-plugin-import": "^2.21.1"
   }
 }

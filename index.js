@@ -54,7 +54,7 @@ app.get("/latest", cors(corsOptions), (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.sendFile(fileName, {}, (err) => {
       if (err) {
-        console.log(`${stamp} doesnt exist yet, trying previous interval..`);
+        console.log(`${stamp} doesnt exist yet, trying previous interval`);
         sendLatest(moment(targetMoment).subtract(6, "hours"));
       }
     });
@@ -106,29 +106,12 @@ app.get("/nearest", cors(corsOptions), (req, res, next) => {
 
 /**
  *
- * Ping for new data every 15 mins
- *
- */
-setInterval(() => {
-  run(moment.utc());
-}, 900000);
-
-/**
- *
- * @param targetMoment {Object} moment to check for new data
- */
-function run(targetMoment) {
-  getGribData(targetMoment);
-}
-
-/**
- *
  * Finds and downloads the latest 6 hourly GRIB2 data from NOAAA
  *
  */
 function getGribData(targetMoment) {
   if (moment.utc().diff(targetMoment, "days") > 10) {
-    console.log("hit limit, harvest complete or there is a big gap in data..");
+    console.log("Harvest complete or there is a big gap in data");
     return;
   }
 
@@ -167,6 +150,7 @@ function getGribData(targetMoment) {
 
       if (!checkPath(`json-data/${stamp}.json`, false)) {
         console.log("Write output");
+
         // Make sure output directory exists
         checkPath("grib-data", true);
 
@@ -188,19 +172,19 @@ function getGribData(targetMoment) {
 }
 
 function convertGribToJson(stamp, targetMoment) {
-  // mk sure we've got somewhere to put output
+  // Make sure output directory exists
   checkPath("json-data", true);
 
   exec(`${grib2json} --data --output json-data/${stamp}.json --names --compact grib-data/${stamp}.f000`,
     { maxBuffer: 500 * 1024 },
     (error) => {
       if (error) {
-        console.log(`exec error: ${error}`);
+        console.log(`Exec error: ${error}`);
         return;
       }
-      console.log("converted..");
+      console.log("Converted");
 
-      // don't keep raw grib data
+      // Delete raw grib data
       exec("rm grib-data/*");
 
       // if we don't have older stamp, try and harvest one
@@ -208,10 +192,10 @@ function convertGribToJson(stamp, targetMoment) {
       const prevStamp = prevMoment.format("YYYYMMDD") + roundHours(prevMoment.hour(), 6);
 
       if (!checkPath(`json-data/${prevStamp}.json`, false)) {
-        console.log(`attempting to harvest older data ${stamp}`);
+        console.log(`Attempting to harvest older data ${stamp}`);
         run(prevMoment);
       } else {
-        console.log("got older, no need to harvest further");
+        console.log("Already got older files, stopping harvest");
       }
     });
 }
@@ -252,5 +236,18 @@ function checkPath(path, mkdir) {
   }
 }
 
-// init harvest
+/**
+ *
+ * @param targetMoment {Object} moment to check for new data
+ */
+function run(targetMoment) {
+  getGribData(targetMoment);
+}
+
+// Check for new data every 15 mins
+setInterval(() => {
+  run(moment.utc());
+}, 900000);
+
+// Init harvest
 run(moment.utc());

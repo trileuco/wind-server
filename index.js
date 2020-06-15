@@ -41,26 +41,45 @@ app.get("/alive", cors(corsOptions), (req, res) => {
   res.send("Wind server is alive");
 });
 
-app.get("/latest", cors(corsOptions), (req, res) => {
-  /**
-   * Find and return the latest available 6 hourly pre-parsed JSON data
-   *
-   * @param targetMoment {Object} UTC moment
-   */
-  function sendLatest(targetMoment) {
-    const stamp = moment(targetMoment).format("YYYYMMDD") + roundHours(moment(targetMoment).hour(), 6);
-    const fileName = `${__dirname}/json-data/${stamp}.json`;
+/**
+ * Find and return the nearest available 6 hourly pre-parsed JSON data
+ * If limit provided, searches backwards to limit, then forwards to limit before failing.
+ *
+ * @param targetMoment {Object} UTC moment
+ */
+function findNearest(targetMoment) {
+  const nearestForecast = moment(targetMoment).hour(parseInt(roundHours(moment(targetMoment).hour(), 6), 10));
+  let targetDiff = 0;
+  do {
+    targetDiff = targetMoment.diff(nearestForecast, "hours");
+    const targetOffset = parseInt(roundHours(targetDiff, 3), 10);
+    const stamp = getStampFromMoment(targetMoment, targetOffset);
 
-    res.setHeader("Content-Type", "application/json");
-    res.sendFile(fileName, {}, (err) => {
-      if (err) {
-        console.log(`${stamp} doesnt exist yet, trying previous interval`);
-        sendLatest(moment(targetMoment).subtract(6, "hours"));
-      }
-    });
+    console.log(`FindNearest: Checking for ${stamp.filename}`);
+    const file = `${__dirname}/json-data/${stamp.filename}.json`;
+    if (checkPath(file, false)) {
+      return file;
+    }
+
+    nearestForecast.subtract(6, "hours");
+  } while (targetDiff < 15);
+
+  return false;
+}
+
+app.get("/latest", cors(corsOptions), (req, res, next) => {
+  const targetMoment = moment().utc();
+  const filename = findNearest(targetMoment);
+  if (!filename) {
+    next(new Error("No current data available"));
+    return;
   }
-
-  sendLatest(moment().utc());
+  res.setHeader("Content-Type", "application/json");
+  res.sendFile(filename, {}, (err) => {
+    if (err) {
+      console.log(`Error sending ${filename}`);
+    }
+  });
 });
 
 app.get("/nearest", cors(corsOptions), (req, res, next) => {
@@ -107,17 +126,26 @@ app.get("/nearest", cors(corsOptions), (req, res, next) => {
 function nextFile(targetMoment, offset, success) {
   const previousTargetMoment = moment(targetMoment).subtract(6, "hours");
 
-  if (moment.utc().diff(previousTargetMoment, "days") > 10) {
+  if (moment.utc().diff(previousTargetMoment, "days") > 7) {
     console.log("Harvest complete or there is a big gap in data");
     return;
   }
-  if (!success || offset > 12) {
+  if (!success || offset > 15) {
     // Download previous targetMoment
     getGribData(previousTargetMoment, 0);
   } else {
     // Download forecast of current targetMoment
     getGribData(targetMoment, offset + 3);
- }
+  }
+}
+
+function getStampFromMoment(targetMoment, offset) {
+  const stamp = {};
+  stamp.date = moment(targetMoment).format("YYYYMMDD");
+  stamp.hour = roundHours(moment(targetMoment).hour(), 6);
+  stamp.forecast = offset.toString().padStart(3, "0");
+  stamp.filename = `${stamp.date}-${stamp.hour}.f${stamp.forecast}`;
+  return stamp;
 }
 
 /**
@@ -126,19 +154,16 @@ function nextFile(targetMoment, offset, success) {
  *
  */
 function getGribData(targetMoment, offset) {
-  const date = moment(targetMoment).format("YYYYMMDD");
-  const hour = roundHours(moment(targetMoment).hour(), 6);
-  const forecast = offset.toString().padStart(3, "0");
-  const stamp = `${date}-${hour}.f${forecast}`;
+  const stamp = getStampFromMoment(targetMoment, offset);
 
-  if (checkPath(`json-data/${stamp}.json`, false)) {
-    console.log(`Already got ${stamp}, stopping harvest`);
+  if (checkPath(`json-data/${stamp.filename}.json`, false)) {
+    console.log(`Already got ${stamp.filename}, stopping harvest`);
     return;
   }
 
   const url = new URL(`${baseDir}`);
-  const filesuffix = resolution === "1" ? `z.pgrb2.1p00.f${forecast}` : `z.pgrb2full.0p50.f${forecast}`;
-  const file = `gfs.t${hour}${filesuffix}`;
+  const filesuffix = resolution === "1" ? `z.pgrb2.1p00.f${stamp.forecast}` : `z.pgrb2full.0p50.f${stamp.forecast}`;
+  const file = `gfs.t${stamp.hour}${filesuffix}`;
   const params = {
     file,
     ...temp && {
@@ -154,46 +179,46 @@ function getGribData(targetMoment, offset) {
     rightlon: 360,
     toplat: 90,
     bottomlat: -90,
-    dir: `/gfs.${date}/${hour}`,
+    dir: `/gfs.${stamp.date}/${stamp.hour}`,
   };
   Object.entries(params).forEach(([key, val]) => url.searchParams.append(key, val));
 
   fetch(url)
     .then((response) => {
-      console.log(`RESP ${response.status} ${stamp}`);
+      console.log(`RESP ${response.status} ${stamp.filename}`);
 
       if (response.status !== 200) {
         nextFile(targetMoment, offset, false);
         return;
       }
 
-      if (!checkPath(`json-data/${stamp}.json`, false)) {
+      if (!checkPath(`json-data/${stamp.filename}.json`, false)) {
         console.log("Write output");
 
         // Make sure output directory exists
         checkPath("grib-data", true);
 
-        const file = fs.createWriteStream(`grib-data/${stamp}.f000`);
-        response.body.pipe(file);
-        file.on("finish", () => {
-          file.close();
-          convertGribToJson(stamp, targetMoment, offset);
+        const f = fs.createWriteStream(`grib-data/${stamp.filename}`);
+        response.body.pipe(f);
+        f.on("finish", () => {
+          f.close();
+          convertGribToJson(stamp.filename, targetMoment, offset);
         });
       } else {
-        console.log(`Already have ${stamp}, not looking further`);
+        console.log(`Already have ${stamp.filename}, not looking further`);
       }
     })
     .catch((err) => {
-      console.log("ERR", stamp, err);
+      console.log("ERR", stamp.filename, err);
       nextFile(targetMoment, offset, false);
     });
 }
 
-function convertGribToJson(stamp, targetMoment, offset) {
+function convertGribToJson(filename, targetMoment, offset) {
   // Make sure output directory exists
   checkPath("json-data", true);
 
-  exec(`${grib2json} --data --output json-data/${stamp}.json --names --compact grib-data/${stamp}.f000`,
+  exec(`${grib2json} --data --output json-data/${filename}.json --names --compact grib-data/${filename}`,
     { maxBuffer: 500 * 1024 },
     (error) => {
       if (error) {

@@ -17,6 +17,13 @@
     "no-console": "off",
     "no-use-before-define": "warn",
     "quotes": ["error", "double"],
-    "operator-linebreak": ["error", "after"]
+    "operator-linebreak": ["error", "after"],
+    "max-len": ["error", 170, 2, {
+      "ignoreUrls": true,
+      "ignoreComments": false,
+      "ignoreRegExpLiterals": true,
+      "ignoreStrings": true,
+      "ignoreTemplateLiterals": true
+    }]
   }
 }

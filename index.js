@@ -104,24 +104,43 @@ app.get("/nearest", cors(corsOptions), (req, res, next) => {
   }
 });
 
-/**
- *
- * Finds and downloads the latest 6 hourly GRIB2 data from NOAAA
- *
- */
-function getGribData(targetMoment) {
-  if (moment.utc().diff(targetMoment, "days") > 10) {
+function nextFile(targetMoment, offset, success) {
+  const previousTargetMoment = moment(targetMoment).subtract(6, "hours");
+
+  if (moment.utc().diff(previousTargetMoment, "days") > 10) {
     console.log("Harvest complete or there is a big gap in data");
     return;
   }
+  if (!success || offset > 12) {
+    // Download previous targetMoment
+    getGribData(previousTargetMoment, 0);
+  } else {
+    // Download forecast of current targetMoment
+    getGribData(targetMoment, offset + 3);
+ }
+}
 
+/**
+ *
+ * Finds and downloads the latest 6 hourly GRIB2 data from NOAA
+ *
+ */
+function getGribData(targetMoment, offset) {
   const date = moment(targetMoment).format("YYYYMMDD");
   const hour = roundHours(moment(targetMoment).hour(), 6);
-  const stamp = date + hour;
+  const forecast = offset.toString().padStart(3, "0");
+  const stamp = `${date}-${hour}.f${forecast}`;
+
+  if (checkPath(`json-data/${stamp}.json`, false)) {
+    console.log(`Already got ${stamp}, stopping harvest`);
+    return;
+  }
 
   const url = new URL(`${baseDir}`);
+  const filesuffix = resolution === "1" ? `z.pgrb2.1p00.f${forecast}` : `z.pgrb2full.0p50.f${forecast}`;
+  const file = `gfs.t${hour}${filesuffix}`;
   const params = {
-    file: `gfs.t${hour}${resolution === "1" ? "z.pgrb2.1p00.f000" : "z.pgrb2full.0p50.f000"}`,
+    file,
     ...temp && {
       lev_surface: "on",
       var_TMP: "on",
@@ -144,7 +163,7 @@ function getGribData(targetMoment) {
       console.log(`RESP ${response.status} ${stamp}`);
 
       if (response.status !== 200) {
-        getGribData(moment(targetMoment).subtract(6, "hours"));
+        nextFile(targetMoment, offset, false);
         return;
       }
 
@@ -158,7 +177,7 @@ function getGribData(targetMoment) {
         response.body.pipe(file);
         file.on("finish", () => {
           file.close();
-          convertGribToJson(stamp, targetMoment);
+          convertGribToJson(stamp, targetMoment, offset);
         });
       } else {
         console.log(`Already have ${stamp}, not looking further`);
@@ -166,12 +185,11 @@ function getGribData(targetMoment) {
     })
     .catch((err) => {
       console.log("ERR", stamp, err);
-
-      getGribData(moment(targetMoment).subtract(6, "hours"));
+      nextFile(targetMoment, offset, false);
     });
 }
 
-function convertGribToJson(stamp, targetMoment) {
+function convertGribToJson(stamp, targetMoment, offset) {
   // Make sure output directory exists
   checkPath("json-data", true);
 
@@ -187,16 +205,7 @@ function convertGribToJson(stamp, targetMoment) {
       // Delete raw grib data
       exec("rm grib-data/*");
 
-      // if we don't have older stamp, try and harvest one
-      const prevMoment = moment(targetMoment).subtract(6, "hours");
-      const prevStamp = prevMoment.format("YYYYMMDD") + roundHours(prevMoment.hour(), 6);
-
-      if (!checkPath(`json-data/${prevStamp}.json`, false)) {
-        console.log(`Attempting to harvest older data ${stamp}`);
-        run(prevMoment);
-      } else {
-        console.log("Already got older files, stopping harvest");
-      }
+      nextFile(targetMoment, offset, true);
     });
 }
 
@@ -241,7 +250,7 @@ function checkPath(path, mkdir) {
  * @param targetMoment {Object} moment to check for new data
  */
 function run(targetMoment) {
-  getGribData(targetMoment);
+  getGribData(targetMoment, 0);
 }
 
 // Check for new data every 15 mins

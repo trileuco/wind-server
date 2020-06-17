@@ -10,12 +10,22 @@ const app = express();
 const grib2json = process.env.GRIB2JSON || "./converter/bin/grib2json";
 const port = process.env.PORT || 7000;
 const resolution = process.env.RESOLUTION || "0.5";
+const baseDir = `https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_${resolution === "1" ? "1p00" : "0p50"}.pl`;
 const wind = process.env.WIND || true;
 const temp = process.env.TEMP || false;
-const max_history_days = process.env.MAX_HISTORY_DAYS || 2;
-const max_forecast_hours = process.env.MAX_FORECAST_HOURS || 18;
 
-const baseDir = `https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_${resolution === "1" ? "1p00" : "0p50"}.pl`;
+// GFS model update cycle
+const GFS_CYCLE_H = 6;
+
+// GFS model forecast timestep
+const GFS_FORECAST_H = 3;
+
+// Number of days to download historic GFS data (last 14 days available in theory)
+const GFS_CYCLE_MAX_D = process.env.MAX_HISTORY_DAYS || 2;
+
+// Number of forecast hours to download for each model cycle
+const GFS_FORECAST_MAX_H = process.env.MAX_FORECAST_HOURS || 18;
+
 
 // cors config
 const whitelist = [
@@ -50,9 +60,9 @@ app.get("/alive", cors(corsOptions), (req, res) => {
  *
  * @param targetMoment {Object} UTC moment
  */
-function findNearest(targetMoment, limitHours = max_forecast_hours, searchBackwards = true) {
+function findNearest(targetMoment, limitHours = GFS_FORECAST_MAX_H, searchBackwards = true) {
   console.log(`FindNearest: Target ${targetMoment.format("YYYYMMDD-HH")}`);
-  const nearestGFSCycle = moment(targetMoment).hour(roundHours(moment(targetMoment).hour(), 6));
+  const nearestGFSCycle = moment(targetMoment).hour(roundHours(moment(targetMoment).hour(), GFS_CYCLE_H));
   let forecastOffset = 0;
 
   if (nearestGFSCycle.diff(moment().utc(), "hours") > limitHours) {
@@ -62,7 +72,7 @@ function findNearest(targetMoment, limitHours = max_forecast_hours, searchBackwa
 
   do {
     forecastOffset = targetMoment.diff(nearestGFSCycle, "hours");
-    const forecastOffsetRounded = roundHours(forecastOffset, 3, false);
+    const forecastOffsetRounded = roundHours(forecastOffset, GFS_FORECAST_H, false);
     const stamp = getStampFromMoment(nearestGFSCycle, forecastOffsetRounded);
 
     console.log(`FindNearest: Checking for ${stamp.filename}`);
@@ -72,9 +82,9 @@ function findNearest(targetMoment, limitHours = max_forecast_hours, searchBackwa
     }
 
     if (searchBackwards) {
-      nearestGFSCycle.subtract(6, "hours");
+      nearestGFSCycle.subtract(GFS_CYCLE_H, "hours");
     } else {
-      nearestGFSCycle.add(6, "hours");
+      nearestGFSCycle.add(GFS_CYCLE_H, "hours");
     }
   } while (forecastOffset < limitHours);
 
@@ -98,7 +108,7 @@ app.get("/latest", cors(corsOptions), (req, res, next) => {
 
 app.get("/nearest", cors(corsOptions), (req, res, next) => {
   const { time } = req.query;
-  const limit = req.query.limit || max_forecast_hours;
+  const limit = req.query.limit || GFS_FORECAST_MAX_H;
 
   if (!time || !moment(time).isValid()) {
     next(new Error("Invalid time, expecting ISO 8601 date"));
@@ -120,26 +130,26 @@ app.get("/nearest", cors(corsOptions), (req, res, next) => {
 });
 
 function nextFile(targetMoment, offset, success) {
-  const previousTargetMoment = moment(targetMoment).subtract(6, "hours");
+  const previousTargetMoment = moment(targetMoment).subtract(GFS_CYCLE_H, "hours");
 
-  if (moment.utc().diff(previousTargetMoment, "days") > max_history_days) {
+  if (moment.utc().diff(previousTargetMoment, "days") > GFS_CYCLE_MAX_D) {
     console.log("Harvest complete or there is a big gap in data");
     return;
   }
-  if (!success || offset > max_forecast_hours) {
+  if (!success || offset > GFS_FORECAST_MAX_H) {
     // Download previous targetMoment
     getGribData(previousTargetMoment, 0);
   } else {
     // Download forecast of current targetMoment
-    getGribData(targetMoment, offset + 3);
+    getGribData(targetMoment, offset + GFS_FORECAST_H);
   }
 }
 
 function getStampFromMoment(targetMoment, offset) {
   const stamp = {};
   stamp.date = moment(targetMoment).format("YYYYMMDD");
-  stamp.hour = roundHours(moment(targetMoment).hour(), 6).toString().padStart(2, "0");
-  stamp.forecast = offset.toString().padStart(3, "0");
+  stamp.hour = roundHours(moment(targetMoment).hour(), GFS_CYCLE_H).toString().padStart(2, "0");
+  stamp.forecast = offset.toString().padStart(GFS_FORECAST_H, "0");
   stamp.filename = `${moment(targetMoment).format("YYYY-MM-DD")}T${stamp.hour}.f${stamp.forecast}`;
   return stamp;
 }

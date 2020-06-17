@@ -12,6 +12,9 @@ const port = process.env.PORT || 7000;
 const resolution = process.env.RESOLUTION || "0.5";
 const wind = process.env.WIND || true;
 const temp = process.env.TEMP || false;
+const max_history_days = process.env.MAX_HISTORY_DAYS || 2;
+const max_forecast_hours = process.env.MAX_FORECAST_HOURS || 18;
+
 const baseDir = `https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_${resolution === "1" ? "1p00" : "0p50"}.pl`;
 
 // cors config
@@ -42,18 +45,25 @@ app.get("/alive", cors(corsOptions), (req, res) => {
 });
 
 /**
- * Find and return the nearest available 6 hourly pre-parsed JSON data
- * If limit provided, searches backwards to limit, then forwards to limit before failing.
+ * Find and return the nearest available GFS forecast before the current timestamp.
+ * Considers the 6 hour model update cycle and the 3 hour forecast steps.
  *
  * @param targetMoment {Object} UTC moment
  */
-function findNearest(targetMoment) {
-  const nearestForecast = moment(targetMoment).hour(parseInt(roundHours(moment(targetMoment).hour(), 6), 10));
-  let targetDiff = 0;
+function findNearest(targetMoment, limitHours = max_forecast_hours, searchBackwards = true) {
+  console.log(`FindNearest: Target ${targetMoment.format("YYYYMMDD-HH")}`);
+  const nearestGFSCycle = moment(targetMoment).hour(roundHours(moment(targetMoment).hour(), 6));
+  let forecastOffset = 0;
+
+  if (nearestGFSCycle.diff(moment().utc(), "hours") > limitHours) {
+    console.log("FindNearest: Requested timestamp too far in the future");
+    return false;
+  }
+
   do {
-    targetDiff = targetMoment.diff(nearestForecast, "hours");
-    const targetOffset = parseInt(roundHours(targetDiff, 3), 10);
-    const stamp = getStampFromMoment(targetMoment, targetOffset);
+    forecastOffset = targetMoment.diff(nearestGFSCycle, "hours");
+    const forecastOffsetRounded = roundHours(forecastOffset, 3);
+    const stamp = getStampFromMoment(nearestGFSCycle, forecastOffsetRounded);
 
     console.log(`FindNearest: Checking for ${stamp.filename}`);
     const file = `${__dirname}/json-data/${stamp.filename}.json`;
@@ -61,8 +71,12 @@ function findNearest(targetMoment) {
       return file;
     }
 
-    nearestForecast.subtract(6, "hours");
-  } while (targetDiff < 15);
+    if (searchBackwards) {
+      nearestGFSCycle.subtract(6, "hours");
+    } else {
+      nearestGFSCycle.add(6, "hours");
+    }
+  } while (forecastOffset < limitHours);
 
   return false;
 }
@@ -77,60 +91,42 @@ app.get("/latest", cors(corsOptions), (req, res, next) => {
   res.setHeader("Content-Type", "application/json");
   res.sendFile(filename, {}, (err) => {
     if (err) {
-      console.log(`Error sending ${filename}`);
+      console.log(`Error sending ${filename}: ${err}`);
     }
   });
 });
 
 app.get("/nearest", cors(corsOptions), (req, res, next) => {
-  const time = req.query.timeIso;
-  const limit = req.query.searchLimit;
-  let searchForwards = false;
+  const { time } = req.query;
+  const limit = req.query.limit || max_forecast_hours;
 
-  /**
-   * Find and return the nearest available 6 hourly pre-parsed JSON data
-   * If limit provided, searches backwards to limit, then forwards to limit before failing.
-   *
-   * @param targetMoment {Object} UTC moment
-   */
-  function sendNearestTo(targetMoment) {
-    if (limit && Math.abs(moment.utc(time).diff(targetMoment, "days")) >= limit) {
-      if (!searchForwards) {
-        searchForwards = true;
-        sendNearestTo(moment(targetMoment).add(limit, "days"));
-        return;
-      }
-      next(new Error("No data within searchLimit"));
-      return;
+  if (!time || !moment(time).isValid()) {
+    next(new Error("Invalid time, expecting ISO 8601 date"));
+    return;
+  }
+
+  const targetMoment = moment.utc(time);
+  const filename = findNearest(targetMoment, limit);
+  if (!filename) {
+    next(new Error("No current data available"));
+    return;
+  }
+  res.setHeader("Content-Type", "application/json");
+  res.sendFile(filename, {}, (err) => {
+    if (err) {
+      console.log(`Error sending ${filename}: ${err}`);
     }
-
-    const stamp = moment(targetMoment).format("YYYYMMDD") + roundHours(moment(targetMoment).hour(), 6);
-    const fileName = `${__dirname}/json-data/${stamp}.json`;
-
-    res.setHeader("Content-Type", "application/json");
-    res.sendFile(fileName, {}, (err) => {
-      if (err) {
-        const nextTarget = searchForwards ? moment(targetMoment).add(6, "hours") : moment(targetMoment).subtract(6, "hours");
-        sendNearestTo(nextTarget);
-      }
-    });
-  }
-
-  if (time && moment(time).isValid()) {
-    sendNearestTo(moment.utc(time));
-  } else {
-    next(new Error("Invalid params, expecting: timeIso=ISO_TIME_STRING"));
-  }
+  });
 });
 
 function nextFile(targetMoment, offset, success) {
   const previousTargetMoment = moment(targetMoment).subtract(6, "hours");
 
-  if (moment.utc().diff(previousTargetMoment, "days") > 7) {
+  if (moment.utc().diff(previousTargetMoment, "days") > max_history_days) {
     console.log("Harvest complete or there is a big gap in data");
     return;
   }
-  if (!success || offset > 15) {
+  if (!success || offset > max_forecast_hours) {
     // Download previous targetMoment
     getGribData(previousTargetMoment, 0);
   } else {
@@ -142,7 +138,7 @@ function nextFile(targetMoment, offset, success) {
 function getStampFromMoment(targetMoment, offset) {
   const stamp = {};
   stamp.date = moment(targetMoment).format("YYYYMMDD");
-  stamp.hour = roundHours(moment(targetMoment).hour(), 6);
+  stamp.hour = roundHours(moment(targetMoment).hour(), 6).toString().padStart(2, "0");
   stamp.forecast = offset.toString().padStart(3, "0");
   stamp.filename = `${stamp.date}-${stamp.hour}.f${stamp.forecast}`;
   return stamp;
@@ -236,19 +232,14 @@ function convertGribToJson(filename, targetMoment, offset) {
 
 /**
  *
- * Round hours to expected interval, e.g. we're currently using 6 hourly interval
- * i.e. 00 || 06 || 12 || 18
+ * Round hours down to expected interval
  *
  * @param hours
  * @param interval
- * @returns {String}
+ * @returns {number}
  */
 function roundHours(hours, interval) {
-  if (interval > 0) {
-    const result = (Math.floor(hours / interval) * interval);
-    return result < 10 ? `0${result.toString()}` : result;
-  }
-  return hours;
+  return Math.floor(hours / interval) * interval;
 }
 
 /**

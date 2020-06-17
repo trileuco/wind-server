@@ -140,7 +140,7 @@ function getStampFromMoment(targetMoment, offset) {
   stamp.date = moment(targetMoment).format("YYYYMMDD");
   stamp.hour = roundHours(moment(targetMoment).hour(), 6).toString().padStart(2, "0");
   stamp.forecast = offset.toString().padStart(3, "0");
-  stamp.filename = `${stamp.date}-${stamp.hour}.f${stamp.forecast}`;
+  stamp.filename = `${moment(targetMoment).format("YYYY-MM-DD")}T${stamp.hour}.f${stamp.forecast}`;
   return stamp;
 }
 

@@ -55,7 +55,7 @@ app.get("/alive", cors(corsOptions), (req, res) => {
 });
 
 /**
- * Find and return the nearest available GFS forecast after the current timestamp.
+ * Find and return the nearest available GFS forecast for the current timestamp.
  * Considers the 6 hour model update cycle and the 3 hour forecast steps.
  *
  * @param targetMoment {Object} UTC moment
@@ -242,17 +242,18 @@ function convertGribToJson(filename, targetMoment, offset) {
 
 /**
  *
- * Round hours down to expected interval
+ * Round hours to expected interval
  *
  * @param hours
  * @param interval
+ * @param floor
  * @returns {number}
  */
 function roundHours(hours, interval, floor = true) {
   if (floor) {
     return Math.floor(hours / interval) * interval;
   }
-  return Math.ceil(hours / interval) * interval;
+  return Math.round(hours / interval) * interval;
 }
 
 /**

@@ -45,7 +45,7 @@ app.get("/alive", cors(corsOptions), (req, res) => {
 });
 
 /**
- * Find and return the nearest available GFS forecast before the current timestamp.
+ * Find and return the nearest available GFS forecast after the current timestamp.
  * Considers the 6 hour model update cycle and the 3 hour forecast steps.
  *
  * @param targetMoment {Object} UTC moment
@@ -62,7 +62,7 @@ function findNearest(targetMoment, limitHours = max_forecast_hours, searchBackwa
 
   do {
     forecastOffset = targetMoment.diff(nearestGFSCycle, "hours");
-    const forecastOffsetRounded = roundHours(forecastOffset, 3);
+    const forecastOffsetRounded = roundHours(forecastOffset, 3, false);
     const stamp = getStampFromMoment(nearestGFSCycle, forecastOffsetRounded);
 
     console.log(`FindNearest: Checking for ${stamp.filename}`);
@@ -238,8 +238,11 @@ function convertGribToJson(filename, targetMoment, offset) {
  * @param interval
  * @returns {number}
  */
-function roundHours(hours, interval) {
-  return Math.floor(hours / interval) * interval;
+function roundHours(hours, interval, floor = true) {
+  if (floor) {
+    return Math.floor(hours / interval) * interval;
+  }
+  return Math.ceil(hours / interval) * interval;
 }
 
 /**

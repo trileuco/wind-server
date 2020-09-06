@@ -72,7 +72,7 @@ function findNearest(targetMoment, limitHours = GFS_FORECAST_MAX_H, searchBackwa
 
   do {
     forecastOffset = targetMoment.diff(nearestGFSCycle, "hours");
-    const forecastOffsetRounded = roundHours(forecastOffset, GFS_FORECAST_H, false);
+    const forecastOffsetRounded = roundHours(forecastOffset, GFS_FORECAST_H);
     const stamp = getStampFromMoment(nearestGFSCycle, forecastOffsetRounded);
 
     console.log(`FindNearest: Checking for ${stamp.filename}`);

@@ -185,7 +185,7 @@ function getGribData(targetMoment, offset) {
     rightlon: 360,
     toplat: 90,
     bottomlat: -90,
-    dir: `/gfs.${stamp.date}/${stamp.hour}`,
+    dir: `/gfs.${stamp.date}/${stamp.hour}/atmos`,
   };
   Object.entries(params).forEach(([key, val]) => url.searchParams.append(key, val));
 

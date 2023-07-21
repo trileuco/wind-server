@@ -29,16 +29,12 @@ const GFS_FORECAST_MAX_H = process.env.MAX_FORECAST_HOURS || 18;
 
 // cors config
 const whitelist = [
-  "http://localhost:8080",
-  "http://localhost:3000",
-  "http://localhost:4000",
+  "https://tracktherace.com",
+  /^https:\/\/.*\.tracktherace\.com$/
 ];
 
 const corsOptions = {
-  origin(origin, callback) {
-    const originIsWhitelisted = whitelist.indexOf(origin) !== -1;
-    callback(null, originIsWhitelisted);
-  },
+  origin: whitelist
 };
 
 app.use(compression());
